@@ -9,7 +9,7 @@ export const config = {
 };
 
 export default async function handler(req, res) {
-  // 🟢 CORS Preflight support
+  // ✅ CORS preflight
   if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -17,7 +17,7 @@ export default async function handler(req, res) {
     return res.status(204).end();
   }
 
-  // 🌍 Always set CORS for actual requests
+  // ✅ CORS for all
   res.setHeader('Access-Control-Allow-Origin', '*');
 
   if (req.method !== 'POST') {
@@ -35,12 +35,10 @@ export default async function handler(req, res) {
     const buffer = fs.readFileSync(file.filepath);
 
     try {
-      // Get GoFile server
       const serverRes = await fetch('https://api.gofile.io/v1/server');
       const serverJson = await serverRes.json();
       const server = serverJson.data.server;
 
-      // Upload to GoFile
       const boundary = '----WebKitFormBoundary' + Math.random().toString(16).slice(2);
       const body = Buffer.concat([
         Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${file.originalFilename}"\r\nContent-Type: application/octet-stream\r\n\r\n`),
@@ -67,16 +65,17 @@ export default async function handler(req, res) {
         req.end();
       });
 
-      // Return file link
       return res.status(200).json({
         filename: file.originalFilename,
         url: uploadRes.data.downloadPage
       });
+
     } catch (e) {
       console.error("Upload failed:", e);
       return res.status(500).json({ error: 'Upload failed' });
     }
   });
 }
+
 
 

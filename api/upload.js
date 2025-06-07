@@ -1,3 +1,7 @@
+import formidable from 'formidable';
+import fs from 'fs';
+import https from 'https';
+
 export const config = {
   api: {
     bodyParser: false,
@@ -5,47 +9,53 @@ export const config = {
 };
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const busboy = await import('busboy');
-  const bb = busboy.default({ headers: req.headers });
+  const form = formidable({ multiples: false });
 
-  let fileBuffer = Buffer.alloc(0);
-  let filename = '';
+  form.parse(req, async (err, fields, files) => {
+    if (err || !files.file) return res.status(400).json({ error: 'File upload failed' });
 
-  bb.on('file', (_, file, info) => {
-    filename = info.filename;
-    file.on('data', (data) => {
-      fileBuffer = Buffer.concat([fileBuffer, data]);
-    });
-  });
+    const file = files.file[0];
+    const buffer = fs.readFileSync(file.filepath);
 
-  bb.on('close', async () => {
     try {
       const serverRes = await fetch('https://api.gofile.io/v1/server');
       const serverJson = await serverRes.json();
       const server = serverJson.data.server;
 
-      const uploadRes = await fetch(`https://${server}.gofile.io/uploadFile`, {
-        method: 'POST',
-        body: (() => {
-          const form = new FormData();
-          form.append('file', new Blob([fileBuffer]), filename);
-          return form;
-        })()
+      const boundary = '----WebKitFormBoundary' + Math.random().toString(16).slice(2);
+      const body = Buffer.concat([
+        Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${file.originalFilename}"\r\nContent-Type: application/octet-stream\r\n\r\n`),
+        buffer,
+        Buffer.from(`\r\n--${boundary}--\r\n`)
+      ]);
+
+      const uploadRes = await new Promise((resolve, reject) => {
+        const req = https.request({
+          hostname: `${server}.gofile.io`,
+          path: '/uploadFile',
+          method: 'POST',
+          headers: {
+            'Content-Type': `multipart/form-data; boundary=${boundary}`,
+            'Content-Length': body.length
+          }
+        }, (res) => {
+          let data = '';
+          res.on('data', chunk => data += chunk);
+          res.on('end', () => resolve(JSON.parse(data)));
+        });
+        req.on('error', reject);
+        req.write(body);
+        req.end();
       });
 
-      const uploadJson = await uploadRes.json();
-      const url = uploadJson.data.downloadPage;
-
-      return res.status(200).json({ filename, url });
-    } catch (err) {
-      console.error("Upload error:", err);
-      return res.status(500).json({ error: 'Upload failed' });
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.status(200).json({ filename: file.originalFilename, url: uploadRes.data.downloadPage });
+    } catch (error) {
+      console.error("❌ Upload error:", error);
+      res.status(500).json({ error: 'Upload failed' });
     }
   });
-
-  req.pipe(bb);
 }
+

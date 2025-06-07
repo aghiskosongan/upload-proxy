@@ -1,3 +1,22 @@
+export default async function handler(req, res) {
+  // ⇒ Tanggapi preflight CORS
+  if (req.method === 'OPTIONS') {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    return res.status(204).end();
+  }
+
+  // Untuk semua response berikut, sertakan CORS header
+  res.setHeader('Access-Control-Allow-Origin', '*');
+
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  // …rest of your upload logic…
+}
+
 import formidable from 'formidable';
 import fs from 'fs';
 import https from 'https';

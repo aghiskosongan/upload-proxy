@@ -1,22 +1,3 @@
-export default async function handler(req, res) {
-  // ⇒ Tanggapi preflight CORS
-  if (req.method === 'OPTIONS') {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    return res.status(204).end();
-  }
-
-  // Untuk semua response berikut, sertakan CORS header
-  res.setHeader('Access-Control-Allow-Origin', '*');
-
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
-
-  // …rest of your upload logic…
-}
-
 import formidable from 'formidable';
 import fs from 'fs';
 import https from 'https';
@@ -28,21 +9,38 @@ export const config = {
 };
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  // 🟢 CORS Preflight support
+  if (req.method === 'OPTIONS') {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    return res.status(204).end();
+  }
+
+  // 🌍 Always set CORS for actual requests
+  res.setHeader('Access-Control-Allow-Origin', '*');
+
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
 
   const form = formidable({ multiples: false });
 
   form.parse(req, async (err, fields, files) => {
-    if (err || !files.file) return res.status(400).json({ error: 'File upload failed' });
+    if (err || !files.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
 
     const file = files.file[0];
     const buffer = fs.readFileSync(file.filepath);
 
     try {
+      // Get GoFile server
       const serverRes = await fetch('https://api.gofile.io/v1/server');
       const serverJson = await serverRes.json();
       const server = serverJson.data.server;
 
+      // Upload to GoFile
       const boundary = '----WebKitFormBoundary' + Math.random().toString(16).slice(2);
       const body = Buffer.concat([
         Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${file.originalFilename}"\r\nContent-Type: application/octet-stream\r\n\r\n`),
@@ -69,12 +67,16 @@ export default async function handler(req, res) {
         req.end();
       });
 
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.status(200).json({ filename: file.originalFilename, url: uploadRes.data.downloadPage });
-    } catch (error) {
-      console.error("❌ Upload error:", error);
-      res.status(500).json({ error: 'Upload failed' });
+      // Return file link
+      return res.status(200).json({
+        filename: file.originalFilename,
+        url: uploadRes.data.downloadPage
+      });
+    } catch (e) {
+      console.error("Upload failed:", e);
+      return res.status(500).json({ error: 'Upload failed' });
     }
   });
 }
+
 

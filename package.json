@@ -1,6 +1,7 @@
 {
   "type": "module",
   "dependencies": {
-    "busboy": "^1.6.0"
+    "formidable": "^3.5.0"
   }
 }
+

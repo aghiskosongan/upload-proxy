@@ -17,7 +17,7 @@ export default async function handler(req, res) {
     return res.status(204).end();
   }
 
-  // ✅ CORS for all
+  // ✅ CORS untuk semua
   res.setHeader('Access-Control-Allow-Origin', '*');
 
   if (req.method !== 'POST') {
@@ -35,10 +35,6 @@ export default async function handler(req, res) {
     const buffer = fs.readFileSync(file.filepath);
 
     try {
-      const serverRes = await fetch('https://api.gofile.io/v1/server');
-      const serverJson = await serverRes.json();
-      const server = serverJson.data.server;
-
       const boundary = '----WebKitFormBoundary' + Math.random().toString(16).slice(2);
       const body = Buffer.concat([
         Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${file.originalFilename}"\r\nContent-Type: application/octet-stream\r\n\r\n`),
@@ -48,7 +44,7 @@ export default async function handler(req, res) {
 
       const uploadRes = await new Promise((resolve, reject) => {
         const req = https.request({
-          hostname: `${server}.gofile.io`,
+          hostname: 'store1.gofile.io',
           path: '/uploadFile',
           method: 'POST',
           headers: {
@@ -58,7 +54,14 @@ export default async function handler(req, res) {
         }, (res) => {
           let data = '';
           res.on('data', chunk => data += chunk);
-          res.on('end', () => resolve(JSON.parse(data)));
+          res.on('end', () => {
+            try {
+              const json = JSON.parse(data);
+              resolve(json);
+            } catch (e) {
+              reject(new Error('Failed to parse Gofile response'));
+            }
+          });
         });
         req.on('error', reject);
         req.write(body);
@@ -67,7 +70,7 @@ export default async function handler(req, res) {
 
       return res.status(200).json({
         filename: file.originalFilename,
-        url: uploadRes.data.downloadPage
+        url: uploadRes.data?.downloadPage || 'No URL returned'
       });
 
     } catch (e) {
@@ -76,6 +79,7 @@ export default async function handler(req, res) {
     }
   });
 }
+
 
 
 

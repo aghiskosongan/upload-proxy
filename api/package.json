@@ -1,0 +1,7 @@
+{
+  "name": "upload-proxy",
+  "version": "1.0.0",
+  "dependencies": {
+    "formidable": "^3.5.0"
+  }
+}

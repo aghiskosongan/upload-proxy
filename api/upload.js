@@ -26,53 +26,28 @@ export default async function handler(req, res) {
 
   form.parse(req, async (err, fields, files) => {
     if (err || !files.file || !files.file[0]) {
-      console.error('❌ Formidable error:', err);
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
     const file = files.file[0];
-    let buffer;
-    try {
-      buffer = fs.readFileSync(file.filepath);
-    } catch (e) {
-      console.error('❌ Failed to read file:', e);
-      return res.status(500).json({ error: 'Failed to read file' });
-    }
+    const buffer = fs.readFileSync(file.filepath);
+
+    const boundary = '----WebKitFormBoundary' + Math.random().toString(16).slice(2);
+    const body = Buffer.concat([
+      Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${file.originalFilename}"\r\nContent-Type: application/octet-stream\r\n\r\n`),
+      buffer,
+      Buffer.from(`\r\n--${boundary}--\r\n`)
+    ]);
 
     try {
-      // 🔄 Dapatkan server Gofile
-      const serverRes = await fetch('https://api.gofile.io/v1/server');
-      const serverText = await serverRes.text();
-
-      let serverJson;
-      try {
-        serverJson = JSON.parse(serverText);
-      } catch (e) {
-        console.error("❌ Failed to parse /server response:", serverText);
-        return res.status(500).json({ error: 'Invalid JSON from Gofile /server', raw: serverText });
-      }
-
-      const server = serverJson?.data?.server;
-      if (!server) {
-        console.error('❌ No server in response:', serverJson);
-        return res.status(500).json({ error: 'Failed to get server from Gofile', raw: serverJson });
-      }
-
-      const boundary = '----WebKitFormBoundary' + Math.random().toString(16).slice(2);
-      const body = Buffer.concat([
-        Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${file.originalFilename}"\r\nContent-Type: application/octet-stream\r\n\r\n`),
-        buffer,
-        Buffer.from(`\r\n--${boundary}--\r\n`)
-      ]);
-
       const uploadRes = await new Promise((resolve, reject) => {
         const req = https.request({
-          hostname: `${server}.gofile.io`,
-          path: '/uploadFile',
+          hostname: 'file.io',
+          path: '/?expires=1d',
           method: 'POST',
           headers: {
             'Content-Type': `multipart/form-data; boundary=${boundary}`,
-            'Content-Length': body.length
+            'Content-Length': body.length,
           }
         }, (res) => {
           let data = '';
@@ -82,8 +57,8 @@ export default async function handler(req, res) {
               const json = JSON.parse(data);
               resolve(json);
             } catch (e) {
-              console.error("❌ Failed to parse Gofile /uploadFile response:", data);
-              reject(new Error('Invalid JSON from upload'));
+              console.error("❌ Failed to parse response from file.io:", data);
+              reject(new Error("Invalid JSON from file.io"));
             }
           });
         });
@@ -93,19 +68,17 @@ export default async function handler(req, res) {
         req.end();
       });
 
-      const url = uploadRes?.data?.downloadPage;
-      if (!url) {
-        console.error('❌ Gofile upload returned no URL:', uploadRes);
-        return res.status(500).json({ error: 'No URL returned from Gofile', raw: uploadRes });
+      if (!uploadRes.success || !uploadRes.link) {
+        return res.status(500).json({ error: 'Upload to file.io failed', response: uploadRes });
       }
 
       return res.status(200).json({
         filename: file.originalFilename,
-        url: url
+        url: uploadRes.link
       });
 
     } catch (e) {
-      console.error('❌ Upload failed:', e);
+      console.error("❌ Upload failed:", e);
       return res.status(500).json({ error: 'Upload failed', detail: e.message });
     }
   });

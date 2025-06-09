@@ -40,12 +40,12 @@ export default async function handler(req, res) {
     }
 
     try {
-      // 🔄 Ambil server dari Gofile
-      const serverRes = await fetch('https://api.gofile.io/v1/server');
+      const serverRes = await fetch('https://api.gofile.io/getServer'); // ✅ Gofile v1 endpoint
       const serverJson = await serverRes.json();
-      const server = serverJson.data?.server;
+      const server = serverJson?.data?.server;
 
       if (!server) {
+        console.error("❌ Failed to get Gofile server:", serverJson);
         return res.status(500).json({ error: 'Failed to get Gofile server' });
       }
 
@@ -73,6 +73,7 @@ export default async function handler(req, res) {
               const json = JSON.parse(data);
               resolve(json);
             } catch (e) {
+              console.error("❌ Failed to parse upload response:", data);
               reject(new Error('Failed to parse upload response'));
             }
           });
@@ -85,6 +86,7 @@ export default async function handler(req, res) {
 
       const url = uploadRes?.data?.downloadPage;
       if (!url) {
+        console.error("❌ Gofile response missing URL:", uploadRes);
         return res.status(500).json({ error: 'No URL returned from Gofile' });
       }
 
@@ -99,3 +101,4 @@ export default async function handler(req, res) {
     }
   });
 }
+

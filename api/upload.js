@@ -38,17 +38,6 @@ export default async function handler(req, res) {
     }
 
     try {
-      // 🔄 Ambil server dari endpoint baru (tanpa v1)
-      const serverRes = await fetch('https://api.gofile.io/getServer', {
-        headers: { 'Content-Type': 'application/json' }
-      });
-      const serverJson = await serverRes.json();
-      const server = serverJson.data?.server;
-
-      if (!server) {
-        return res.status(500).json({ error: 'Failed to get Gofile server' });
-      }
-
       const boundary = '----WebKitFormBoundary' + Math.random().toString(16).slice(2);
       const body = Buffer.concat([
         Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${file.originalFilename}"\r\nContent-Type: application/octet-stream\r\n\r\n`),
@@ -58,8 +47,8 @@ export default async function handler(req, res) {
 
       const uploadRes = await new Promise((resolve, reject) => {
         const req = https.request({
-          hostname: `${server}.gofile.io`,
-          path: '/uploadFile',
+          hostname: 'api.gofile.io',
+          path: '/v2/uploadFile',
           method: 'POST',
           headers: {
             'Content-Type': `multipart/form-data; boundary=${boundary}`,
@@ -73,7 +62,7 @@ export default async function handler(req, res) {
               const json = JSON.parse(data);
               resolve(json);
             } catch (e) {
-              reject(new Error('Failed to parse upload response'));
+              reject(new Error('Failed to parse upload response: ' + data));
             }
           });
         });

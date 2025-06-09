@@ -9,6 +9,7 @@ export const config = {
 };
 
 export default async function handler(req, res) {
+  // CORS preflight
   if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -30,9 +31,24 @@ export default async function handler(req, res) {
     }
 
     const file = files.file[0];
-    const buffer = fs.readFileSync(file.filepath);
+    let buffer;
+    try {
+      buffer = fs.readFileSync(file.filepath);
+    } catch (e) {
+      return res.status(500).json({ error: 'Failed to read file' });
+    }
 
-    const boundary = '----WebKitFormBoundary' + Math.random().toString(16).slice(2);
+    // Dapatkan server Gofile aktif
+    let server;
+    try {
+      const serverRes = await fetch("https://api.gofile.io/v1/getServer");
+      const serverJson = await serverRes.json();
+      server = serverJson.data.server;
+    } catch (e) {
+      return res.status(500).json({ error: 'Failed to get Gofile server' });
+    }
+
+    const boundary = '----FormBoundary' + Math.random().toString(16).slice(2);
     const body = Buffer.concat([
       Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${file.originalFilename}"\r\nContent-Type: application/octet-stream\r\n\r\n`),
       buffer,
@@ -40,27 +56,19 @@ export default async function handler(req, res) {
     ]);
 
     try {
-      const uploadRes = await new Promise((resolve, reject) => {
+      const response = await new Promise((resolve, reject) => {
         const req = https.request({
-          hostname: 'file.io',
-          path: '/?expires=1d',
+          hostname: `${server}.gofile.io`,
+          path: '/uploadFile',
           method: 'POST',
           headers: {
             'Content-Type': `multipart/form-data; boundary=${boundary}`,
             'Content-Length': body.length,
-          }
-        }, (res) => {
+          },
+        }, res => {
           let data = '';
           res.on('data', chunk => data += chunk);
-          res.on('end', () => {
-            try {
-              const json = JSON.parse(data);
-              resolve(json);
-            } catch (e) {
-              console.error("❌ Failed to parse response from file.io:", data);
-              reject(new Error("Invalid JSON from file.io"));
-            }
-          });
+          res.on('end', () => resolve(data));
         });
 
         req.on('error', reject);
@@ -68,13 +76,16 @@ export default async function handler(req, res) {
         req.end();
       });
 
-      if (!uploadRes.success || !uploadRes.link) {
-        return res.status(500).json({ error: 'Upload to file.io failed', response: uploadRes });
+      const result = JSON.parse(response);
+      const url = result?.data?.downloadPage;
+
+      if (!url) {
+        return res.status(500).json({ error: 'Upload failed', raw: result });
       }
 
       return res.status(200).json({
         filename: file.originalFilename,
-        url: uploadRes.link
+        url: url
       });
 
     } catch (e) {

@@ -40,15 +40,21 @@ export default async function handler(req, res) {
     }
 
     try {
-      const serverRes = await fetch('https://api.gofile.io/getServer'); // ✅ Gofile v1 endpoint
-      const serverJson = await serverRes.json();
-      const server = serverJson?.data?.server;
+     const serverRes = await fetch('https://api.gofile.io/v1/server');
+let serverJson;
+try {
+  serverJson = await serverRes.json();
+} catch (e) {
+  const text = await serverRes.text();
+  return res.status(500).json({ error: 'Failed to parse server response', detail: text });
+}
 
-      if (!server) {
-        console.error("❌ Failed to get Gofile server:", serverJson);
-        return res.status(500).json({ error: 'Failed to get Gofile server' });
-      }
+const server = serverJson.data?.server;
 
+if (!server) {
+  return res.status(500).json({ error: 'Invalid server info', full: serverJson });
+}
+      
       const boundary = '----WebKitFormBoundary' + Math.random().toString(16).slice(2);
       const body = Buffer.concat([
         Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${file.originalFilename}"\r\nContent-Type: application/octet-stream\r\n\r\n`),

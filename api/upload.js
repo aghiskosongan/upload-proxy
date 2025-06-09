@@ -9,7 +9,6 @@ export const config = {
 };
 
 export default async function handler(req, res) {
-  // ✅ CORS preflight
   if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -17,7 +16,6 @@ export default async function handler(req, res) {
     return res.status(204).end();
   }
 
-  // ✅ CORS global
   res.setHeader('Access-Control-Allow-Origin', '*');
 
   if (req.method !== 'POST') {
@@ -28,6 +26,7 @@ export default async function handler(req, res) {
 
   form.parse(req, async (err, fields, files) => {
     if (err || !files.file || !files.file[0]) {
+      console.error('❌ Formidable error:', err);
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
@@ -36,25 +35,29 @@ export default async function handler(req, res) {
     try {
       buffer = fs.readFileSync(file.filepath);
     } catch (e) {
+      console.error('❌ Failed to read file:', e);
       return res.status(500).json({ error: 'Failed to read file' });
     }
 
     try {
-     const serverRes = await fetch('https://api.gofile.io/v1/server');
-let serverJson;
-try {
-  serverJson = await serverRes.json();
-} catch (e) {
-  const text = await serverRes.text();
-  return res.status(500).json({ error: 'Failed to parse server response', detail: text });
-}
+      // 🔄 Dapatkan server Gofile
+      const serverRes = await fetch('https://api.gofile.io/v1/server');
+      const serverText = await serverRes.text();
 
-const server = serverJson.data?.server;
+      let serverJson;
+      try {
+        serverJson = JSON.parse(serverText);
+      } catch (e) {
+        console.error("❌ Failed to parse /server response:", serverText);
+        return res.status(500).json({ error: 'Invalid JSON from Gofile /server', raw: serverText });
+      }
 
-if (!server) {
-  return res.status(500).json({ error: 'Invalid server info', full: serverJson });
-}
-      
+      const server = serverJson?.data?.server;
+      if (!server) {
+        console.error('❌ No server in response:', serverJson);
+        return res.status(500).json({ error: 'Failed to get server from Gofile', raw: serverJson });
+      }
+
       const boundary = '----WebKitFormBoundary' + Math.random().toString(16).slice(2);
       const body = Buffer.concat([
         Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${file.originalFilename}"\r\nContent-Type: application/octet-stream\r\n\r\n`),
@@ -79,8 +82,8 @@ if (!server) {
               const json = JSON.parse(data);
               resolve(json);
             } catch (e) {
-              console.error("❌ Failed to parse upload response:", data);
-              reject(new Error('Failed to parse upload response'));
+              console.error("❌ Failed to parse Gofile /uploadFile response:", data);
+              reject(new Error('Invalid JSON from upload'));
             }
           });
         });
@@ -92,8 +95,8 @@ if (!server) {
 
       const url = uploadRes?.data?.downloadPage;
       if (!url) {
-        console.error("❌ Gofile response missing URL:", uploadRes);
-        return res.status(500).json({ error: 'No URL returned from Gofile' });
+        console.error('❌ Gofile upload returned no URL:', uploadRes);
+        return res.status(500).json({ error: 'No URL returned from Gofile', raw: uploadRes });
       }
 
       return res.status(200).json({
@@ -103,7 +106,7 @@ if (!server) {
 
     } catch (e) {
       console.error('❌ Upload failed:', e);
-      return res.status(500).json({ error: 'Upload failed' });
+      return res.status(500).json({ error: 'Upload failed', detail: e.message });
     }
   });
 }

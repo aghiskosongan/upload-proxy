@@ -29,8 +29,8 @@ export default async function handler(req, res) {
 
     const file = files.file[0];
     const buffer = fs.readFileSync(file.filepath);
-    const boundary = '----FormBoundary' + Math.random().toString(16).slice(2);
 
+    const boundary = '----FormBoundary' + Math.random().toString(16).slice(2);
     const body = Buffer.concat([
       Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${file.originalFilename}"\r\nContent-Type: application/octet-stream\r\n\r\n`),
       buffer,
@@ -50,16 +50,18 @@ export default async function handler(req, res) {
         }, (res) => {
           let data = '';
           res.on('data', chunk => data += chunk);
-          res.on('end', () => resolve(data.trim())); // plain URL
+          res.on('end', () => {
+            if (!data.includes('http')) {
+              return reject(new Error(`Invalid response: ${data}`));
+            }
+            resolve(data.trim());
+          });
         });
+
         req.on('error', reject);
         req.write(body);
         req.end();
       });
-
-      if (!uploadUrl.startsWith('http')) {
-        return res.status(500).json({ error: 'Invalid URL from tmpfiles' });
-      }
 
       return res.status(200).json({
         filename: file.originalFilename,
@@ -67,8 +69,8 @@ export default async function handler(req, res) {
       });
 
     } catch (e) {
-      console.error('❌ Upload error:', e);
-      return res.status(500).json({ error: 'Upload failed' });
+      console.error('❌ Upload failed:', e.message);
+      return res.status(500).json({ error: 'Upload failed', details: e.message });
     }
   });
 }

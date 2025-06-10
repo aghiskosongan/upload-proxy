@@ -38,33 +38,31 @@ export default async function handler(req, res) {
     ]);
 
     try {
-     const uploadUrl = await new Promise((resolve, reject) => {
-  const req = https.request({
-    hostname: 'tmpfiles.org',
-    path: '/api/v1/upload',
-    method: 'POST',
-    headers: {
-      'Content-Type': `multipart/form-data; boundary=${boundary}`,
-      'Content-Length': body.length
-    }
-  }, (res) => {
-    let data = '';
-    res.on('data', chunk => data += chunk);
-    res.on('end', () => {
-      const match = data.match(/href="(https:\/\/tmpfiles\.org\/[^"]+)"/);
-      if (match) {
-        resolve(match[1]); // ✅ URL berhasil diambil
-      } else {
-        reject(new Error(`Failed to parse URL from: ${data}`));
-      }
-    });
-  });
+      const uploadUrl = await new Promise((resolve, reject) => {
+        const req = https.request({
+          hostname: 'tmpfiles.org',
+          path: '/api/v1/upload',
+          method: 'POST',
+          headers: {
+            'Content-Type': `multipart/form-data; boundary=${boundary}`,
+            'Content-Length': body.length
+          }
+        }, (res) => {
+          let data = '';
+          res.on('data', chunk => data += chunk);
+          res.on('end', () => {
+            if (!data.includes('http')) {
+              return reject(new Error(`Invalid response: ${data}`));
+            }
+            resolve(data.trim());
+          });
+        });
 
-  req.on('error', reject);
-  req.write(body);
-  req.end();
-});
-      
+        req.on('error', reject);
+        req.write(body);
+        req.end();
+      });
+
       return res.status(200).json({
         filename: file.originalFilename,
         url: uploadUrl

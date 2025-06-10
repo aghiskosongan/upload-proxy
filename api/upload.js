@@ -3,9 +3,7 @@ import fs from 'fs';
 import https from 'https';
 
 export const config = {
-  api: {
-    bodyParser: false,
-  },
+  api: { bodyParser: false }
 };
 
 export default async function handler(req, res) {
@@ -25,39 +23,25 @@ export default async function handler(req, res) {
   const form = formidable({ multiples: false });
 
   form.parse(req, async (err, fields, files) => {
-    if (err || !files.file || !files.file[0]) {
+    if (err || !files.file?.[0]) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
     const file = files.file[0];
-    let buffer;
-    try {
-      buffer = fs.readFileSync(file.filepath);
-    } catch (e) {
-      return res.status(500).json({ error: 'Failed to read file' });
-    }
+    const buffer = fs.readFileSync(file.filepath);
+    const boundary = '----FormBoundary' + Math.random().toString(16).slice(2);
+
+    const body = Buffer.concat([
+      Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${file.originalFilename}"\r\nContent-Type: application/octet-stream\r\n\r\n`),
+      buffer,
+      Buffer.from(`\r\n--${boundary}--\r\n`)
+    ]);
 
     try {
-      // ✅ Ambil server upload dari Gofile
-      const serverRes = await fetch('https://api.gofile.io/getServer');
-      const serverJson = await serverRes.json();
-      const server = serverJson.data?.server;
-
-      if (!server) {
-        return res.status(500).json({ error: 'Failed to get Gofile server' });
-      }
-
-      const boundary = '----WebKitFormBoundary' + Math.random().toString(16).slice(2);
-      const body = Buffer.concat([
-        Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${file.originalFilename}"\r\nContent-Type: application/octet-stream\r\n\r\n`),
-        buffer,
-        Buffer.from(`\r\n--${boundary}--\r\n`)
-      ]);
-
-      const uploadRes = await new Promise((resolve, reject) => {
+      const uploadUrl = await new Promise((resolve, reject) => {
         const req = https.request({
-          hostname: `${server}.gofile.io`,
-          path: '/uploadFile',
+          hostname: 'tmpfiles.org',
+          path: '/api/v1/upload',
           method: 'POST',
           headers: {
             'Content-Type': `multipart/form-data; boundary=${boundary}`,
@@ -66,33 +50,24 @@ export default async function handler(req, res) {
         }, (res) => {
           let data = '';
           res.on('data', chunk => data += chunk);
-          res.on('end', () => {
-            try {
-              const json = JSON.parse(data);
-              resolve(json);
-            } catch (e) {
-              reject(new Error('Failed to parse upload response: ' + data));
-            }
-          });
+          res.on('end', () => resolve(data.trim())); // plain URL
         });
-
         req.on('error', reject);
         req.write(body);
         req.end();
       });
 
-      const url = uploadRes?.data?.downloadPage;
-      if (!url) {
-        return res.status(500).json({ error: 'No URL returned from Gofile' });
+      if (!uploadUrl.startsWith('http')) {
+        return res.status(500).json({ error: 'Invalid URL from tmpfiles' });
       }
 
       return res.status(200).json({
         filename: file.originalFilename,
-        url: url
+        url: uploadUrl
       });
 
     } catch (e) {
-      console.error('❌ Upload failed:', e);
+      console.error('❌ Upload error:', e);
       return res.status(500).json({ error: 'Upload failed' });
     }
   });

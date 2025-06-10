@@ -51,10 +51,13 @@ export default async function handler(req, res) {
           let data = '';
           res.on('data', chunk => data += chunk);
           res.on('end', () => {
-            if (!data.includes('http')) {
-              return reject(new Error(`Invalid response: ${data}`));
+            // ✅ Ambil URL dari response HTML pakai regex
+            const match = data.match(/href="(https:\/\/tmpfiles\.org\/[^"]+)"/);
+            if (match) {
+              resolve(match[1]); // ambil hanya URL bersih
+            } else {
+              reject(new Error(`Failed to parse URL from: ${data}`));
             }
-            resolve(data.trim());
           });
         });
 
@@ -65,7 +68,7 @@ export default async function handler(req, res) {
 
       return res.status(200).json({
         filename: file.originalFilename,
-        url: uploadUrl
+        url: uploadUrl // ✅ Sudah dalam bentuk string langsung
       });
 
     } catch (e) {
